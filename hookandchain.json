@@ -1,0 +1,46 @@
+[
+    {
+      "title": "Original position",
+      "camPos": {
+        "x": 0,
+        "y": 0,
+        "z": 0.2
+      },
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "title": "Chain",
+      "type": "Chain",
+      "description": "Grade 80 chain. Good for heavy lifting duties.",
+      "camPos": {
+        "x": 0.08170786400306902,
+        "y": 0.1595322387378812,
+        "z": 0.11619431151883863
+      },
+      "lookAt": {
+        "x": 0,
+        "y": 0.1,
+        "z": 0
+      }
+    },
+    {
+      "title": "Hook",
+      "type": "Hook",
+      "description": 
+      "Discover unparalleled lifting power and durability with our precision-engineered crane hook, ideal for industries demanding superior performance and reliability.",
+      "camPos": {
+        "x": -0.053625091949992966,
+        "y": -0.01208892395765885,
+        "z": 0.12968208162529804
+      },
+      "lookAt": {
+        "x": 0,
+        "y": -0.05,
+        "z": 0
+      }
+    }
+  ]
