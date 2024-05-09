@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Wisit us at vikingsling.com</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+            
+        <style>
+            body {
+                overflow: hidden;
+                margin: 0;
+            }
+    
+            #annotationsPanel {
+                position: absolute;
+                top: 30px;
+                left: 4px;
+                width: auto;
+                height: auto;
+                color: white;
+                font-family: monospace;
+            }
+    
+            #annotationsPanel ul {
+                padding: 0;
+                list-style-type: none;
+            }
+    
+            .annotationLabel {
+                color: #ffffff;
+                font-family: monospace;
+                pointer-events: none;
+                font-size: 10px;
+                display: block;
+            }
+    
+            .annotationDescription {
+                color: #ffffff;
+                font-family: monospace;
+                pointer-events: none;
+                font-size: 10px;
+                position: absolute;        
+                left: 25px;
+                padding: 1em;
+                width: 200px;            
+                background: rgba(0, 0, 0, 0.66);
+                border-radius: .5em;            
+                transition: opacity .5s;
+                display: none;
+            }
+    
+            .annotationButton {
+                width: 120px;
+                height: 45px;
+                font-family: monospace;
+                background-color: rgba(.25, .25, .25, .5);
+                color: white;
+                text-align: left;
+                padding-left: 20px;
+                cursor: pointer;
+                font-size:10px;
+            }
+        </style>
+	</head>
+	<body>
+        <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://unpkg.com/three@0.138.0/build/three.module.js",
+                    "TWEEN": "https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.5.0/dist/tween.esm.js",
+                    "OrbitControls": "https://unpkg.com/three@0.138.0/examples/jsm/controls/OrbitControls.js",
+                    "GLTFLoader": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/loaders/GLTFLoader.js",
+                    "dat.gui":"https://unpkg.com/dat.gui@0.7.9/build/dat.gui.module.js",
+                    "CSS2DRenderer" : "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/renderers/CSS2DRenderer.js",
+                    "BufferGeometryUtils" : "https://unpkg.com/three@0.143.0/examples/jsm/utils/BufferGeometryUtils.js "
+                }
+            }
+        </script>
+        <div id="annotationsPanel"></div>
+		<script type="module">
+			import * as THREE from 'three'
+            import { OrbitControls } from 'OrbitControls'
+            import { GLTFLoader } from 'GLTFLoader'
+            import { GUI } from 'dat.gui'
+            import { CSS2DObject } from 'CSS2DRenderer'
+            import { CSS2DRenderer } from 'CSS2DRenderer'
+            import * as BufferGeometryUtils from 'BufferGeometryUtils';
+            import  TWEEN  from 'TWEEN';  
+
+			let camera, scene, renderer, loader,controls, object;
+            let circleTexture = null;
+            let annotations = null;
+			let planes, planeObjects = [], planeHelpers;        
+			let clock;
+            const annotationMarkers = [];
+            const labelRenderer = new CSS2DRenderer()
+
+            const hookUrl = "https://cdn.jsdelivr.net/gh/Joticaa/models/cambelhook2.glb"
+            const chainUrl = 'https://cdn.jsdelivr.net/gh/Joticaa/models/chain.glb';
+            const backgroundUrl = 'https://cdn.jsdelivr.net/gh/Joticaa/models/background3.jpg'
+            const annotationsUrl = 'https://raw.githubusercontent.com/Joticaa/models/main/hookandchain.json'
+            const textureUrl = 'https://cdn.jsdelivr.net/gh/Joticaa/models/circle.png'
+
+			const params = {
+				planeX: {
+					offset: 2,
+                    upperBound:0.05,
+                    lowerBound:-0.06,
+					flipOffset: false,
+				},
+				planeY: {
+					offset: 0.55,
+                    upperBound:0.55,
+                    lowerBound:-0.13,
+					flipOffset: false,
+
+				},
+				planeZ: {
+					offset: 0.02,
+                    upperBound:0.02,
+                    lowerBound:-0.018,
+					flipOffset: false,
+				}
+			};
+
+            const parametersChain = {
+            Position: 0,
+            positionLower: 0,
+            positionUpper: 0.1,
+            positionStep: 0.001,
+
+            Rotate: 0,
+            }
+
+            const parametersHook = {
+            Position: 0,
+            positionLower: 0,
+            positionUpper: 0.065,
+            positionStep: 0.001,
+
+            Rotate: 0,
+            }
+
+			init();
+			animate();
+
+			function createPlaneStencilGroup( geometry, plane, renderOrder ) {
+
+				const group = new THREE.Group();
+				const baseMat = new THREE.MeshBasicMaterial();
+				baseMat.depthWrite = false;
+				baseMat.depthTest = false;
+				baseMat.colorWrite = false;
+				baseMat.stencilWrite = true;
+				baseMat.stencilFunc = THREE.AlwaysStencilFunc;
+
+				// back faces
+				const mat0 = baseMat.clone();
+				mat0.side = THREE.BackSide;
+				mat0.clippingPlanes = [ plane ];
+				mat0.stencilFail = THREE.IncrementWrapStencilOp;
+				mat0.stencilZFail = THREE.IncrementWrapStencilOp;
+				mat0.stencilZPass = THREE.IncrementWrapStencilOp;
+
+				const mesh0 = new THREE.Mesh( geometry, mat0 );
+				mesh0.renderOrder = renderOrder;
+				group.add( mesh0 );
+
+				// front faces
+				const mat1 = baseMat.clone();
+				mat1.side = THREE.FrontSide;
+				mat1.clippingPlanes = [ plane ];
+				mat1.stencilFail = THREE.DecrementWrapStencilOp;
+				mat1.stencilZFail = THREE.DecrementWrapStencilOp;
+				mat1.stencilZPass = THREE.DecrementWrapStencilOp;
+
+				const mesh1 = new THREE.Mesh( geometry, mat1 );
+				mesh1.renderOrder = renderOrder;
+
+				group.add( mesh1 );
+
+				return group;
+
+			}
+
+			function init() {
+
+				clock = new THREE.Clock();
+
+				scene = new THREE.Scene();
+
+                loader = new GLTFLoader();
+
+				camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.01, 100 );
+				camera.position.set( 0, 0, 0.2 );
+
+				scene.add( new THREE.AmbientLight( 0xffffff, 1.5 ) );
+
+				const dirLight = new THREE.DirectionalLight( 0xffffff, 3 );
+				dirLight.position.set( 5, 10, 7.5 );
+				dirLight.castShadow = true;
+				dirLight.shadow.camera.right = 2;
+				dirLight.shadow.camera.left = - 2;
+				dirLight.shadow.camera.top	= 2;
+				dirLight.shadow.camera.bottom = - 2;
+
+				dirLight.shadow.mapSize.width = 1024;
+				dirLight.shadow.mapSize.height = 1024;
+				scene.add( dirLight );
+
+                labelRenderer.setSize(window.innerWidth, window.innerHeight)
+                labelRenderer.domElement.style.position = 'absolute'
+                labelRenderer.domElement.style.top = '0px'
+                labelRenderer.domElement.style.pointerEvents = 'none'
+                document.body.appendChild(labelRenderer.domElement)
+
+				planes = [
+					new THREE.Plane( new THREE.Vector3( - 1, 0, 0 ), params.planeX.offset ),
+					new THREE.Plane( new THREE.Vector3( 0, - 1, 0 ), params.planeY.offset ),
+					new THREE.Plane( new THREE.Vector3( 0, 0, - 1 ), params.planeZ.offset )
+				];
+
+                const materialColors = { chainColor: 0xCCCCCC, hookColor : 0xFF0000 }
+                
+                let materialChain = new THREE.MeshStandardMaterial({
+                    color: materialColors.chainColor, 
+                    metalness: 1,   
+                    roughness: 0.5,
+                    wireframe: false,
+                    flatShading: false,
+                    clippingPlanes: [planes[0],planes[1],planes[2]],
+                    clipShadows:true,
+                    side: THREE.DoubleSide
+                });
+                
+                let materialHook = new THREE.MeshStandardMaterial({
+                        color: materialColors.hookColor,
+                        metalness: 1, 
+                        roughness: 0.5,
+                        wireframe: false,
+                        flatShading: false,
+                        clippingPlanes: [planes[0],planes[1],planes[2]],
+                        clipShadows:true,
+                        side: THREE.DoubleSide
+                });    
+
+                let hook = null;
+                let chain = null; 
+                
+                let geometry = new THREE.BufferGeometry();
+                const geometryArray = [];
+                object = new THREE.Group();
+				scene.add( object );
+                
+
+                Promise.all([
+                    loadModelWithMaterial(hookUrl, materialHook),
+                    loadModelWithMaterial(chainUrl, materialChain),
+                    loadTexture(textureUrl),
+                    fetchAnnotations(annotationsUrl)
+                ])
+                .then(([hookModel, chainModel,circleTexture, annotationsData]) => {
+                    hook = hookModel;
+                    chain = chainModel;
+                    circleTexture = circleTexture;    
+                    annotations = annotationsData;
+
+                    scene.add(hook)
+                    scene.add(chain)
+
+                    hook.traverse(child => {
+                        if (child.isMesh) {
+                            child.updateMatrix();
+                            const geometryClone = child.geometry.clone();
+   
+                            geometryClone.applyMatrix4(child.matrixWorld);
+
+                            geometryArray.push(geometryClone);
+
+                        }
+                    });
+
+                    chain.traverse(child => {
+                        if (child.isMesh) {
+                            child.updateMatrix();
+                            const geometryClone = child.geometry.clone();
+
+                            geometryClone.applyMatrix4(child.matrixWorld);
+
+                            geometryArray.push(geometryClone);
+                        }
+                    });
+
+                    setUpModel(geometryArray)
+
+                    const ul = document.createElement('ul');
+                    ul.className = 'annotation-list';
+                    const annotationsPanel = document.getElementById('annotationsPanel');
+                    annotationsPanel.appendChild(ul);
+
+                    Object.keys(annotations).forEach((a) => {
+                        const li = document.createElement('li');
+                        li.className = 'annotation-item';
+                        ul.appendChild(li);
+
+                        const button = document.createElement('button');
+                        button.innerHTML = a + ' : ' + annotations[a].title;
+                        button.className = 'annotationButton';
+                        button.addEventListener('click', function () {
+                            gotoAnnotation(annotations[a])
+                        });
+                        li.appendChild(button);
+
+                        const annotationSpriteMaterial = new THREE.SpriteMaterial({
+                            map: circleTexture,
+                            depthTest: false,
+                            depthWrite: false,
+                            sizeAttenuation: false,
+                        });
+                        const annotationSprite = new THREE.Sprite(annotationSpriteMaterial);
+                        annotationSprite.scale.set(0.066, 0.066, 0.066);
+                        annotationSprite.position.copy(annotations[a].lookAt);
+                        annotationSprite.userData.id = a;
+                        annotationSprite.renderOrder = 1;
+                        scene.add(annotationSprite);
+                        scene.updateMatrixWorld();
+                        annotationMarkers.push(annotationSprite);
+
+                        const annotationDiv = document.createElement('div');
+                        annotationDiv.className = 'annotationLabel';
+                        annotationDiv.innerHTML = a;
+                        const annotationLabel = new CSS2DObject(annotationDiv);
+                        annotationLabel.position.copy(annotations[a].lookAt);
+                        scene.add(annotationLabel);
+
+                        if (annotations[a].description) {
+                            const annotationDescriptionDiv = document.createElement('div');
+                            annotationDescriptionDiv.className = 'annotationDescription';
+                            annotationDescriptionDiv.innerHTML = annotations[a].description;
+                            annotationDiv.appendChild(annotationDescriptionDiv);
+                            annotations[a].descriptionDomElement = annotationDescriptionDiv;
+                        }
+                    });
+                    
+                })
+                .catch(error => {
+                    console.error('Failed to load models or annotations:', error);
+                });        
+
+				
+
+				function setUpModel(){
+                    planeObjects = [];
+                    const planeGeom = new THREE.PlaneGeometry( 4, 4 );
+
+                    for ( let i = 0; i < 3; i ++ ) {
+
+                        const poGroup = new THREE.Group();
+                        const plane = planes[ i ];
+
+                        geometryArray.forEach((geometry) => {
+                            const stencilGroup = createPlaneStencilGroup(geometry, plane, i + 1);
+                            object.add( stencilGroup );
+                        });
+
+                        let materialColor;
+                        if (i === 0) {
+                            materialColor = 0xff0000; // Red
+                        } else if (i === 1) {
+                            materialColor = 0x0000ff; // Blue
+                        } else {
+                            materialColor = 0x00ff00; // Green
+                        }
+                        const planeMat =
+                            new THREE.MeshStandardMaterial( {
+
+                                color: materialColor,
+                                metalness: 0.1,
+                                roughness: 0.75,
+                                clippingPlanes: planes.filter( p => p !== plane ),
+
+                                stencilWrite: true,
+                                stencilRef: 0,
+                                stencilFunc: THREE.NotEqualStencilFunc,
+                                stencilFail: THREE.ReplaceStencilOp,
+                                stencilZFail: THREE.ReplaceStencilOp,
+                                stencilZPass: THREE.ReplaceStencilOp,
+
+                            } );
+                        const po = new THREE.Mesh( planeGeom, planeMat );
+                        po.onAfterRender = function ( renderer ) {
+
+                            renderer.clearStencil();
+
+                        };
+
+                        po.renderOrder = i + 1.1;
+                       
+                        poGroup.add( po );
+                        planeObjects.push( po );
+                        scene.add( poGroup );
+
+				}
+
+				const material = new THREE.MeshStandardMaterial( {
+					color: 0xFFC107,
+					metalness: 0.1,
+					roughness: 0.75,
+					clippingPlanes: planes,
+					clipShadows: true,
+					shadowSide: THREE.DoubleSide,
+
+				} );
+
+				// add the color
+				const clippedColorFront = new THREE.Mesh( geometry, material );
+				clippedColorFront.castShadow = true;
+				clippedColorFront.renderOrder = 6;
+				object.add( clippedColorFront );
+                }
+				
+
+
+				const ground = new THREE.Mesh(
+					new THREE.PlaneGeometry( 9, 9, 1, 1 ),
+					new THREE.ShadowMaterial( { color: 0x000000, opacity: 0.25, side: THREE.DoubleSide } )
+				);
+
+				ground.rotation.x = - Math.PI / 2; // rotates X/Y to X/Z
+				ground.position.y = - 1;
+				ground.receiveShadow = true;
+				scene.add( ground );
+
+				// Renderer
+				renderer = new THREE.WebGLRenderer( { antialias: true, stencil: true } );
+				renderer.shadowMap.enabled = true;
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setClearColor( 0x263238 );
+				window.addEventListener( 'resize', onWindowResize );
+				document.body.appendChild( renderer.domElement );
+
+				renderer.localClippingEnabled = true;
+
+				// Controls
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.minDistance = 0.02;
+				controls.maxDistance = 20;
+				controls.update();
+
+				// GUI
+				const gui = new GUI();
+
+                const chainFolder = gui.addFolder('Chain commands')
+
+                chainFolder.add(parametersChain, 'Position', parametersChain.positionLower, parametersChain.positionUpper, parametersChain.positionStep).onChange((value) => {
+                if (chain) {
+                    chain.position.y = value;    
+                    
+                    resetPlanes();     
+                }}).listen()
+
+                chainFolder.add(parametersChain, 'Rotate', -Math.PI, Math.PI, 0.01).onChange((value) => {
+                    if (chain) {
+                        chain.rotation.y = value;
+                         
+                        resetPlanes();
+                    }
+                }).listen();
+
+
+                chainFolder.add(materialChain, 'roughness', 0, 1.0, 0.01) 
+                chainFolder.add(materialChain, 'metalness', 0, 1.0, 0.01) 
+
+                chainFolder.add(materialChain, 'wireframe')
+                chainFolder.add(materialChain, 'flatShading').onChange(function () {
+                chain.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            child.material.flatShading = materialChain.flatShading;
+                            child.material.needsUpdate = true;
+                        }
+                    });
+                });
+
+                chainFolder.addColor(materialColors, 'chainColor').onChange(function () { 
+                    materialChain.color.set(materialColors.chainColor)
+                })
+
+                const hookFolder = gui.addFolder('Hook commands')
+
+                hookFolder.add(parametersHook, 'Position', parametersHook.positionLower, parametersHook.positionUpper, parametersHook.positionStep).onChange((value) => {
+                if (hook) {
+                    hook.position.y = -value;  
+                    
+                    resetPlanes();
+                }}).listen()
+
+                hookFolder.add(parametersHook, 'Rotate', -Math.PI, Math.PI, 0.01).onChange((value) => {
+                    if (hook) {
+                        hook.rotation.y = value;
+
+                        resetPlanes(chain,hook);
+                    }
+                }).listen();
+
+
+                hookFolder.add(materialHook, 'roughness', 0, 1.0, 0.01) 
+                hookFolder.add(materialHook, 'metalness', 0, 1.0, 0.01) 
+
+                hookFolder.add(materialHook, 'wireframe')
+                hookFolder.add(materialHook, 'flatShading').onChange(function () {
+                hook.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            child.material.flatShading = materialHook.flatShading;
+                            child.material.needsUpdate = true;
+                        }
+                    });
+                });
+
+                hookFolder.addColor(materialColors, 'hookColor').onChange(function () { 
+                    materialHook.color.set(materialColors.hookColor)
+                })
+
+				const planeX = gui.addFolder( 'Plane X' );
+				planeX.add( params.planeX, 'offset' ).min( params.planeX.lowerBound).max( params.planeX.upperBound).onChange( 
+                    (d) =>{ planes[ 0 ].constant = d ;
+                            
+                            resetObjectParams(chain,hook)
+
+                            } 
+                 ).listen();
+				planeX.add( params.planeX, 'flipOffset' ).onChange( () => {
+
+					planes[ 0 ].negate();
+					params.planeX.offset = planes[ 0 ].constant;
+
+				} ).listen();
+
+				const planeY = gui.addFolder( 'Plane Y' );
+				planeY.add( params.planeY, 'offset' ).min(  params.planeY.lowerBound ).max( params.planeY.upperBound).onChange( 
+                    (d) =>{ planes[ 1 ].constant = d ;
+                            
+                            resetObjectParams()
+
+                            } 
+                ).listen();
+				planeY.add( params.planeY, 'flipOffset' ).onChange( () => {
+
+					planes[ 1 ].negate();
+					params.planeY.offset = planes[ 1 ].constant;
+
+				} ).listen();
+
+				const planeZ = gui.addFolder( 'Plane Z' );
+				planeZ.add( params.planeZ, 'offset' ).min(  params.planeZ.lowerBound ).max( params.planeZ.upperBound).onChange(
+                    (d) =>{ planes[ 2 ].constant = d ;
+
+                            resetObjectParams(chain,hook)
+
+                            } ).listen();
+
+				planeZ.add( params.planeZ, 'flipOffset' ).onChange( () => {
+					planes[ 2 ].negate();
+					params.planeZ.offset = planes[ 2 ].constant;
+				} ).listen();
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+                labelRenderer.setSize(window.innerWidth, window.innerHeight)
+
+			}
+
+			function animate() {
+
+				const delta = clock.getDelta();
+
+				requestAnimationFrame( animate );
+
+                if (planeObjects.length != 0){
+                    for ( let i = 0; i < planeObjects.length; i ++ ) {
+
+                    const plane = planes[ i ];
+                    const po = planeObjects[ i ];
+                    plane.coplanarPoint( po.position );
+                    po.lookAt(
+                        po.position.x - plane.normal.x,
+                        po.position.y - plane.normal.y,
+                        po.position.z - plane.normal.z,
+                    );
+
+                    }    
+                }
+				
+                labelRenderer.render(scene, camera)
+				renderer.render( scene, camera );
+
+                controls.update()
+                TWEEN.update()
+
+			}
+
+            function loadModelWithMaterial(url, material) {
+                return new Promise((resolve, reject) => {
+                    loader.load(
+                        url,
+                        function (gltf) {
+                            gltf.scene.traverse(function (child) {
+                                if (child.isMesh) {
+                                    child.material = material;
+                                }
+                            });
+                            resolve(gltf.scene);  
+                        },
+                        undefined,
+                        function (error) {
+                            console.error('Error loading model:', error);
+                            reject(error);
+                        }
+                    );
+                });
+            }
+            
+            function fetchAnnotations(url) {
+            return fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch annotations');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    return data;
+                })
+                .catch(error => {
+                    console.error('Error fetching annotations:', error);
+                    return null;
+                });
+        }
+            
+            function loadAnnotations(url) {
+            return new Promise((resolve, reject) => {
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        resolve(data); 
+                    })
+                    .catch(error => {
+                        console.error("Error loading annotations:", error);
+                        reject(error); 
+                    });
+            });
+        }
+
+            function loadTexture(textureUrl) {
+                return new Promise((resolve, reject) => {
+                    const textureLoader = new THREE.TextureLoader();
+                    textureLoader.load(
+                        textureUrl,
+                        loadedTexture => {
+                            circleTexture = loadedTexture; 
+                            resolve(loadedTexture); 
+                        },
+                        undefined,
+                        reject
+                    );
+                });
+            }
+
+            function gotoAnnotation(a) {
+            new TWEEN.Tween(camera.position)
+                .to(
+                    {
+                        x: a.camPos.x*1.1,
+                        y: a.camPos.y*1.1,
+                        z: a.camPos.z*1.1,
+                    },
+                    750
+                )
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+
+            new TWEEN.Tween(controls.target)
+                .to(
+                    {
+                        x: a.lookAt.x,
+                        y: a.lookAt.y,
+                        z: a.lookAt.z,
+                    },
+                    750 
+                )
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+                
+        Object.keys(annotations).forEach(function(annotationKey) {
+                const annotation = annotations[annotationKey];
+                if (annotation.descriptionDomElement) {
+                    annotation.descriptionDomElement.style.display = annotation === a ? 'block' : 'none';
+                }
+            });
+        }
+	
+            function resetPlanes(){
+                    params.planeX.offset = params.planeX.upperBound;
+                    planes[0].constant = params.planeX.upperBound;
+                    params.planeX.flipOffset = false;
+
+                    params.planeY.offset = params.planeY.upperBound;
+                    planes[1].constant = params.planeY.upperBound;
+                    params.planeY.flipOffset = false;
+
+                    params.planeZ.offset = params.planeZ.upperBound;
+                    planes[2].constant = params.planeZ.upperBound;
+                    params.planeZ.flipOffset = false;
+            }
+
+            function resetObjectParams(object1, object2){
+                            parametersChain.Position = 0;
+                        	parametersChain.Rotate = 0;
+                            object1.rotation.y = 0;
+                            object1.position.y = 0;
+
+                            parametersHook.Position = 0;
+                        	parametersHook.Rotate = 0;
+                            object2.rotation.y = 0;
+                            object2.position.y = 0;
+            }
+
+
+
+            function onClick(event) {
+            const v = new THREE.Vector2();
+            const raycaster = new THREE.Raycaster();
+
+            v.set(
+                (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
+                -(event.clientY / renderer.domElement.clientHeight) * 2 + 1
+            );
+        
+            raycaster.setFromCamera(v, camera);
+        
+            const intersects = raycaster.intersectObjects(annotationMarkers, true);
+        
+            if (intersects.length > 0) {
+                if (intersects[0].object.userData && intersects[0].object.userData.id) {
+                    gotoAnnotation(annotations[intersects[0].object.userData.id]);
+                }
+            }
+        }
+
+
+            renderer.domElement.addEventListener('click', onClick, false);
+    
+        </script>
+
+	</body>
+</html>
