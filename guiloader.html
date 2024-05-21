@@ -90,9 +90,10 @@
                 height: 100%;
                 background: rgba(0, 0, 0, 0.8);
                 display: flex;
+                flex-direction: column;
                 justify-content: center;
                 align-items: center;
-                z-index: 1000; /* Ensure it is on top of all other content */
+                z-index: 1000;
             }
 
             #spinner {
@@ -104,13 +105,26 @@
                 animation: spin 1s linear infinite;
             }
 
+            #progressBar {
+                width: 200px;
+                height: 10px;
+                background-color: #ddd;
+                margin-top: 20px;
+            }
+
+            #progressBarFill {
+                width: 0%;
+                height: 100%;
+                background-color: #3498db;
+            }
+
             @keyframes spin {
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
             }
 
             #mainContent {
-                display: none; 
+                display: none;
             }
 
         </style>
@@ -333,23 +347,18 @@
                             if (modelBox) {
                                 scene.add(modelBox);
                                 onLoad(modelBox);
-                                console.log("here")
+
+                                document.getElementById('loadingScreen').style.display = 'none';
+                                document.getElementById('mainContent').style.display = 'block';
                             } else {
                                 console.warn("ModelBox not found in the loaded object.");
                             }
                         },function (xhr) {
-                        // This function is called while the model is loading
-                        console.log(xhr)
-                        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-                        if ((xhr.loaded / xhr.total * 100) === 100){
-                            console.log("test")
-                            document.getElementById('loadingScreen').style.display = 'none';
-                            document.getElementById('mainContent').style.display = 'block';
-                        }
-                        
+                            var percentLoaded = (xhr.loaded / xhr.total) * 100;
+                            document.getElementById('progressBarFill').style.width = percentLoaded + '%';
                     },
                     function (error) {
-                        console.error('An error occurred loading the model:', error);
+                        
                         document.getElementById('loadingScreen').style.display = 'none';
                     }
                 )
@@ -1041,6 +1050,9 @@ function createLabelDiv(text) {
         </script>
         <div id="loadingScreen">
             <div id="spinner"></div>
+            <div id="progressBar">
+                <div id="progressBarFill"></div>
+            </div>
         </div>
         <div id="mainContent">
             <div id="annotationsPanel"></div>
