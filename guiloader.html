@@ -45,8 +45,8 @@
                 width: 200px;            
                 background: rgba(0, 0, 0, 0.66);
                 border-radius: .5em;            
-                transition: opacity .5s;
-                display: none;
+                transition: opacity 0.5s;
+                display: none;  
             }
     
             .annotationButton {
@@ -94,6 +94,7 @@
                 justify-content: center;
                 align-items: center;
                 z-index: 1000;
+                transition: opacity 1s ease-out;
             }
 
             #spinner {
@@ -102,7 +103,7 @@
                 border-radius: 50%;
                 width: 60px;
                 height: 60px;
-                animation: spin 1s linear infinite;
+                animation: spin 2s linear infinite;
             }
 
             #progressBar {
@@ -333,8 +334,8 @@
                 loader.load(
                     // '/assets/img/product/jergensincfull.glb',
                     //'/assets/img/product/modelscene.glb',
-                   // '/assets/img/product/chainhookangle.glb',
-                   modelUrl,
+                   '/assets/img/product/chainhookangle.glb',
+                  // modelUrl,
                     function (object) {
                             let modelBox;
 
@@ -348,7 +349,11 @@
                                 scene.add(modelBox);
                                 onLoad(modelBox);
 
-                                document.getElementById('loadingScreen').style.display = 'none';
+                                loadingScreen.style.opacity = '0';
+                                setTimeout(function() {
+                                    loadingScreen.style.display = 'none';
+                                    document.getElementById('mainContent').style.display = 'block';
+                                }, 500);
                                 document.getElementById('mainContent').style.display = 'block';
                             } else {
                                 console.warn("ModelBox not found in the loaded object.");
