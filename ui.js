@@ -29,8 +29,8 @@ const ui = {
             }
             .folderButton {
                 background-color: #008CBA;
-                width: 30px;
-                height: 30px;
+                width: 40px;
+                height: 40px;
                 font-size: 12px;
                 border-radius: 3px;
                 margin-left: 5px;
