@@ -23,14 +23,14 @@ const ui = {
                 list-style: none;
             }
             .controlDivLi {
-                margin-bottom: 5px;
+                margin-bottom: 10px;
                 display: flex;
                 flex-direction: row-reverse;
             }
             .folderButton {
                 background-color: #008CBA;
-                width: 40px;
-                height: 40px;
+                width: 30px;
+                height: 30px;
                 font-size: 12px;
                 border-radius: 3px;
                 margin-left: 5px;
