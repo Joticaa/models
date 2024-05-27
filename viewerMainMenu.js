@@ -32,21 +32,21 @@ const viewerMainMenu = {
             }
 
             .mainControlsMenuButton {
-                background-color: #008CBA;
-                width: 30px;
-                height: 30px;
-                font-size: 12px;
                 border-radius: 3px;
                 padding: 2px;
-                font-weight: bolder;
                 justify-content: center;
                 align-items: center;
                 border: none;
                 cursor: pointer;
+                background-color: transparent;
+            }
+
+            .mainControlsMenuButton img {
+                display: block;
             }
 
             .mainControlsMenuButton span {
-                font-size: 8px;
+                display: none;
             }
         `;
         if (style.styleSheet) {
@@ -55,13 +55,17 @@ const viewerMainMenu = {
             style.appendChild(document.createTextNode(css));
         }
         document.head.appendChild(style);
+
+        // Adjust button sizes initially and on resize
+        this.adjustButtonSizes();
+        window.addEventListener('resize', this.adjustButtonSizes);
     },
 
-    addButton: function(name, onClick) {
+    addButton: function(name, onClick, imageUrl) {
         const button = document.createElement('button');
-        button.id = `goto${name}`
+        button.id = `goto${name}`;
         button.className = 'mainControlsMenuButton';
-        button.innerHTML = `<span>${name}</span>`;
+        button.innerHTML = `<img src="${imageUrl}" alt="${name}">`;
         button.addEventListener('click', onClick);
 
         const li = document.createElement('li');
@@ -69,6 +73,34 @@ const viewerMainMenu = {
         li.appendChild(button);
 
         document.getElementById('mainControlsMenuUl').appendChild(li);
+
+        // Adjust button size for the newly added button
+        this.adjustButtonSizes();
+    },
+
+    adjustButtonSizes: function() {
+        const bodyHeight = document.body.clientHeight;
+        let buttonSize;
+
+        if (bodyHeight >= 500) {
+            buttonSize = 35;
+        } else if (bodyHeight > 400 && bodyHeight < 500) {
+            buttonSize = 30;
+        } else if (bodyHeight > 350 && bodyHeight <= 400) {
+            buttonSize = 23;
+        } else {
+            buttonSize = 15;
+        }
+
+        const buttons = document.querySelectorAll('.mainControlsMenuButton');
+        buttons.forEach(button => {
+            button.style.width = `${buttonSize}px`;
+            button.style.height = `${buttonSize}px`;
+
+            const img = button.querySelector('img');
+            img.style.width = `${buttonSize}px`;
+            img.style.height = `${buttonSize}px`;
+        });
     }
 };
 
