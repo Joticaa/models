@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Wisit us at vikingsling.com</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+        <meta http-equiv='cache-control' content='no-cache'> 
+        <meta http-equiv='expires' content='0'> 
+        <meta http-equiv='pragma' content='no-cache'>    
+        <style>
+            body {
+                overflow: hidden;
+                margin: 0;
+            }
+            #screenshotButton {
+                position: fixed;
+                bottom: 10px;
+                left: 10px;
+                padding: 10px 20px;
+                background-color: #008CBA;
+                color: black;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+            }
+
+            #helper {
+                position: fixed;
+                right: 10px;
+                bottom: 10px;
+                width: 100px;
+                height: 100px;
+                border: none;
+                background-color: transparent;
+                z-index: 1000; 
+            }
+
+            #loadingScreen {
+                position: fixed;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.8);
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                z-index: 1000;
+                transition: opacity 1s ease-out;
+            }
+
+            #spinner {
+                border: 12px solid #f3f3f3;
+                border-top: 12px solid #3498db;
+                border-radius: 50%;
+                width: 60px;
+                height: 60px;
+                animation: spin 2s linear infinite;
+            }
+
+            #progressBar {
+                width: 200px;
+                height: 10px;
+                background-color: #ddd;
+                margin-top: 20px;
+            }
+
+            #progressBarFill {
+                width: 0%;
+                height: 100%;
+                background-color: #3498db;
+            }
+
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+
+            #mainContent {
+                display: none;
+            }
+
+        </style>
+	</head>
+	<body>
+        <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://unpkg.com/three@0.138.0/build/three.module.js",
+                    "TWEEN": "https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.5.0/dist/tween.esm.js",
+                    "OrbitControls": "https://unpkg.com/three@0.138.0/examples/jsm/controls/OrbitControls.js",
+                    "GLTFLoader": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/loaders/GLTFLoader.js",
+                    "dat.gui":"https://unpkg.com/dat.gui@0.7.9/build/dat.gui.module.js",
+                    "CSS2DRenderer" : "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/renderers/CSS2DRenderer.js",
+                    "BufferGeometryUtils" : "https://unpkg.com/three@0.143.0/examples/jsm/utils/BufferGeometryUtils.js",
+                    "ui": "https://cdn.jsdelivr.net/gh/Joticaa/models/viewerFinal/ui.js",
+                    "viewerMainMenu" : "https://cdn.jsdelivr.net/gh/Joticaa/models/viewerFinal/viewerMainMenu.js"
+                }
+            }
+        </script>
+        
+        
+		<script type="module">
+			import * as THREE from 'three'
+            import { OrbitControls } from 'OrbitControls'
+            import { GLTFLoader } from 'GLTFLoader'
+            import { GUI } from 'dat.gui'
+            import { CSS2DObject } from 'CSS2DRenderer'
+            import { CSS2DRenderer } from 'CSS2DRenderer'
+            import * as BufferGeometryUtils from 'BufferGeometryUtils';
+            import  TWEEN  from 'TWEEN';  
+      
+            import {ui} from 'ui';
+            import {viewerMainMenu} from 'viewerMainMenu'
+
+			let camera, scene, renderer, loader, controls, object;
+			let planes, planeObjects = [], planeHelpers;        
+            let dirLight;
+
+            let fullModel;
+            let fullModelBoundingBox
+            let subModels = [];
+            let subModelsColor = []
+            let subModelsPositions = [];
+            let subModelsRotations = [];
+            let subModelsQuaternions = [];
+
+            const annotationMarkers = [];
+            const labelRenderer = new CSS2DRenderer()
+
+            const modelUrl = 'https://cdn.jsdelivr.net/gh/Joticaa/models/onelegoptimized.glb'
+
+			let planeParams = {
+				planeX: {
+					offset: 1,
+                    max: 1,
+                    min: -1,
+					flipOffset: false,
+				},
+				planeY: {
+					offset: 1,
+                    max: 1,
+                    min: -1,
+					flipOffset: false,
+
+				},
+				planeZ: {
+					offset: 1,
+                    max: 1,
+                    min: -1,
+					flipOffset: false,
+				}
+			};
+
+			init();
+			animate();
+
+		
+
+			function init() {
+
+                renderer = new THREE.WebGLRenderer( { antialias: true, stencil: true, preserveDrawingBuffer: true} );
+				renderer.shadowMap.enabled = true;
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setClearColor( 0x263238 );
+				window.addEventListener( 'resize', onWindowResize );
+				document.body.appendChild( renderer.domElement );
+
+				renderer.localClippingEnabled = true
+
+                scene = new THREE.Scene();
+
+                dirLight = new THREE.SpotLight(0xffffff,2.5);
+                dirLight.position.set(0, 0, 10);
+                dirLight.angle = Math.PI / 2; 
+                dirLight.penumbra = 0.1;
+                dirLight.distance = 10; 
+
+				scene.add( dirLight );
+
+            
+                const aspect = window.innerWidth / window.innerHeight;
+                const frustumSize = 10;
+
+                camera  = new THREE.OrthographicCamera(
+                    frustumSize * aspect / - 2, 
+                    frustumSize * aspect / 2, 
+                    frustumSize / 2, 
+                    frustumSize / - 2, 
+                    -1, 
+                    1000 
+                );
+                camera.position.set(0,0,1)
+
+                controls = new OrbitControls( camera, renderer.domElement );
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.07;
+				controls.minDistance = 0.02;
+				controls.maxDistance = 20;
+				controls.update();             
+   
+                planes = [
+					new THREE.Plane( new THREE.Vector3( - 1, 0, 0 ), planeParams.planeX.offset ),
+					new THREE.Plane( new THREE.Vector3( 0, - 1, 0 ), planeParams.planeY.offset ),
+					new THREE.Plane( new THREE.Vector3( 0, 0, - 1 ), planeParams.planeZ.offset )
+				];
+
+               
+                 /* 
+                const materialColors = {TopPart : 0xCCCCFF, BottomPart : 0xFF0000, MiddlePart : 0xCCCCFF}
+
+                const materialColorsOriginal = {TopPart : 0xCCCCCC, BottomPart : 0xFF0000, MiddlePart : 0x0000FF}
+
+                const materialConfig = {
+                    TopPart: new THREE.MeshStandardMaterial({
+                        color: materialColors.TopPart,
+                        metalness: 1,
+                        roughness: 0.5,
+                        opacity: 1,
+                        transparent : false,
+                        wireframe: false,
+                        flatShading: false,
+                        clippingPlanes: [planes[0], planes[1], planes[2]],
+                        clipShadows: true,
+                        side: THREE.DoubleSide
+                    }),
+                    BottomPart: new THREE.MeshStandardMaterial({
+                        color: materialColors.BottomPart,
+                        metalness: 1,
+                        roughness: 0.5,
+                        opacity: 1,
+                        transparent : false,
+                        wireframe: false,
+                        flatShading: false,
+                        clippingPlanes: [planes[0], planes[1], planes[2]],
+                        clipShadows: true,
+                        side: THREE.DoubleSide
+                    }),
+                    MiddlePart: new THREE.MeshStandardMaterial({
+                        color: materialColors.MiddlePart,
+                        metalness: 1,
+                        roughness: 0.5,
+                        opacity: 1,
+                        transparent : false,
+                        wireframe: false,
+                        flatShading: false,
+                        clippingPlanes: [planes[0], planes[1], planes[2]],
+                        clipShadows: true,
+                        side: THREE.DoubleSide
+                    })
+                };   
+               
+                const materialColors = {Chain : 0xCCCCCC, Hook : 0xFF0000}
+
+                const materialColorsOriginal = {Chain : 0xCCCCCC, Hook : 0xFF0000}
+
+                const materialConfig = {
+                    Chain: new THREE.MeshStandardMaterial({
+                        color: materialColors.Chain,
+                        metalness: 1,
+                        roughness: 0.5,
+                        opacity: 1,
+                        transparent : false,
+                        wireframe: false,
+                        flatShading: false,
+                        clippingPlanes: [planes[0], planes[1], planes[2]],
+                        clipShadows: true,
+                        side: THREE.DoubleSide
+                    }),
+                    Hook: new THREE.MeshStandardMaterial({
+                        color: materialColors.Hook,
+                        metalness: 1,
+                        roughness: 0.5,
+                        opacity: 1,
+                        transparent : false,
+                        wireframe: false,
+                        flatShading: false,
+                        clippingPlanes: [planes[0], planes[1], planes[2]],
+                        clipShadows: true,
+                        side: THREE.DoubleSide
+                    })
+                };
+
+                   */
+
+                   const materialColors = {Chain : 0xCCFFFF, Hook : 0x0000FF, Oblong : 0xCCFFFF, Link : 0x008631 }
+
+                    const materialColorsOriginal = {Chain : 0xCCCCCC, Hook : 0xFF0000, Oblong : 0x3498db, Link : 0x008631}
+
+                    const materialConfig = {
+                        Chain: new THREE.MeshStandardMaterial({
+                            color: materialColors.Chain,
+                            metalness: 1,
+                            roughness: 0.5,
+                            opacity: 1,
+                            transparent : false,
+                            wireframe: false,
+                            flatShading: false,
+                            clippingPlanes: [planes[0], planes[1], planes[2]],
+                            clipShadows: true,
+                            side: THREE.DoubleSide
+                        }),
+                        Hook: new THREE.MeshStandardMaterial({
+                            color: materialColors.Hook,
+                            metalness: 1,
+                            roughness: 0.5,
+                            opacity: 1,
+                            transparent : false,
+                            wireframe: false,
+                            flatShading: false,
+                            clippingPlanes: [planes[0], planes[1], planes[2]],
+                            clipShadows: true,
+                            side: THREE.DoubleSide
+                        }),
+                        Oblong: new THREE.MeshStandardMaterial({
+                            color: materialColors.Oblong,
+                            metalness: 1,
+                            roughness: 0.5,
+                            opacity: 1,
+                            transparent : false,
+                            wireframe: false,
+                            flatShading: false,
+                            clippingPlanes: [planes[0], planes[1], planes[2]],
+                            clipShadows: true,
+                            side: THREE.DoubleSide
+                        }),
+                        Link: new THREE.MeshStandardMaterial({
+                            color: materialColors.Link,
+                            metalness: 1,
+                            roughness: 0.5,
+                            opacity: 1,
+                            transparent : false,
+                            wireframe: false,
+                            flatShading: false,
+                            clippingPlanes: [planes[0], planes[1], planes[2]],
+                            clipShadows: true,
+                            side: THREE.DoubleSide
+                        })
+                    };
+                   
+                loader = new GLTFLoader();
+                
+
+                let geometry = new THREE.BufferGeometry();
+                const geometryArray = [];
+                object = new THREE.Group();
+				scene.add( object );
+
+                loader.load(
+                  //'/assets/img/product/jergensincfull.glb',
+                    //'/assets/img/product/modelscene.glb',
+                  // '/assets/img/product/chainhookangle.glb',
+                   //'/assets/img/product/onelegb.glb',
+                  // '/assets/img/product/twolegfirst.glb',
+                   //'/assets/img/product/twolegsecond.glb',
+                    // '/assets/img/product/onelegoptimized.glb',
+                   
+                     modelUrl,
+                    function (object) {
+                            let modelBox;
+
+                            object.scene.traverse(function(child) {
+                                if (child.name === "ModelBox") {
+                                    modelBox = child;
+                                }
+                            });
+
+                            if (modelBox) {
+                                scene.add(modelBox);
+                                onLoad(modelBox);
+
+                                viewerMainMenu.init();
+                                viewerMainMenu.addButton('Iso.', handleMainMenuButtons,'https://cdn.jsdelivr.net/gh/Joticaa/models/here/isometric.png');
+                                viewerMainMenu.addButton('Top', handleMainMenuButtons, 'https://cdn.jsdelivr.net/gh/Joticaa/models/here/top.png');
+                                viewerMainMenu.addButton('Bottom', handleMainMenuButtons, 'https://cdn.jsdelivr.net/gh/Joticaa/models/here/bottom.png');
+                                viewerMainMenu.addButton('Front', handleMainMenuButtons,'https://cdn.jsdelivr.net/gh/Joticaa/models/here/front.png');
+                                viewerMainMenu.addButton('Back', handleMainMenuButtons, 'https://cdn.jsdelivr.net/gh/Joticaa/models/here/back.png');
+                                viewerMainMenu.addButton('Right', handleMainMenuButtons,'https://cdn.jsdelivr.net/gh/Joticaa/models/here/right.png');
+                                viewerMainMenu.addButton('Left', handleMainMenuButtons, 'https://cdn.jsdelivr.net/gh/Joticaa/models/here/left.png');
+
+                                loadingScreen.style.opacity = '0';
+
+                                updateScreenShootButton();
+
+                                ui.adjustButtonSizes();
+                              
+                                initHelper()
+                                updateHelper();
+                                
+                                setTimeout(function() {
+                                    loadingScreen.style.display = 'none';
+                                    document.getElementById('mainContent').style.display = 'block';
+                                }, 500);
+
+                            } else {
+                                console.warn("ModelBox not found in the loaded object.");
+                            }
+                        },function (xhr) {
+                            var percentLoaded = (xhr.loaded / xhr.total) * 100;
+                            document.getElementById('progressBarFill').style.width = percentLoaded + '%';
+                    },
+                    function (error) {
+                        
+                        document.getElementById('loadingScreen').style.display = 'none';
+                    }
+                )
+                
+
+			function onLoad(modelBox){
+                    fullModel = modelBox.children[0];
+
+                    scaleModelToFitBox(fullModel, new THREE.Vector3(1, 1, 1));
+                    let offset = moveModelCenterToBoxCenter(fullModel, modelBox);
+
+                    fullModelBoundingBox = new THREE.Box3().setFromObject(fullModel);
+           
+                    updateOrthographicCamera(camera, fullModelBoundingBox);
+
+                    
+                    planeParams = updatePlaneParams(fullModelBoundingBox)
+
+                    updatePlanesConstants(planes,fullModelBoundingBox) 
+
+                    for (let i = 0; i < fullModel.children.length; i++) {                      
+                        subModels.push(fullModel.children[i]); 
+                
+                        let position = new THREE.Vector3().copy(fullModel.children[i].position);
+                        subModelsPositions.push(position);
+
+        
+                        let rotation = new THREE.Euler().copy(fullModel.children[i].rotation);
+                        subModelsRotations.push(rotation);
+
+                        let quaternion = new THREE.Quaternion().copy(fullModel.children[i].quaternion);
+                        subModelsQuaternions.push(quaternion);
+                    }
+
+                    fullModel.traverse(function (child) {
+                        if (child.isMesh) {
+                            const geometryClone = child.geometry.clone();
+                            const matrixWorld = child.matrixWorld.clone();
+                     
+                            geometryClone.applyMatrix4(matrixWorld);
+                            geometryArray.push(geometryClone);
+
+                            for (let key in materialConfig) {
+                                if (child.name.includes(key)) {
+                                    child.material = materialConfig[key];
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                
+                    setUpModel(geometryArray,geometry)
+
+                                 
+                    ui.init()
+
+                        for (let i = 0; i<subModels.length ; i++){
+ 
+                            const subFolder = ui.addFolderContent("M"+ (i+1))
+
+                            ui.adjustButtonSizes()
+
+                            initSubCanvas(subModels[i].clone(),"M"+(i+1)+"CanvasDiv",camera)
+
+                            ui.addFolderSlider(subFolder, 'Position Y', 
+                            subModelsPositions[i].y - fullModelBoundingBox.max.y / 20, 
+                            subModelsPositions[i].y + fullModelBoundingBox.max.y / 20, 
+                            fullModelBoundingBox.max.y / 100, 
+                            subModels[i].position, 'y', 
+                            (value) => {
+                                if (subModels[i]) {
+                                    subModels[i].position.y = value;    
+                                    resetPlanes();
+                                    renderer.localClippingEnabled = false;
+                                                                              
+                                    }
+                                }
+                            );
+
+                        const rotationControl = {
+                            rotateY: 0
+                        };
+
+                        ui.addFolderSlider(subFolder, 'Rotation', 
+                            -Math.PI, Math.PI, 0.01, 
+                            rotationControl, 'rotateY', 
+                            (value) => {
+                                subModels[i].quaternion.copy(subModelsQuaternions[i]);
+
+                                    const quaternion = new THREE.Quaternion();
+                                    const axis = new THREE.Vector3(0, 1, 0).applyEuler(subModelsRotations[i]);
+
+                                    quaternion.setFromAxisAngle(axis, value);   
+                                    subModels[i].quaternion.multiplyQuaternions(quaternion, subModels[i].quaternion);
+
+                                resetPlanes();
+
+                                renderer.localClippingEnabled = false;
+                                                                                            
+                            }
+                        );
+
+                        let child = subModels[i].children.find(child => {
+                            return child.name.includes(subModels[i].name) && child.isMesh;
+                        });
+                    
+                        if (child) {
+
+                            ui.addFolderSlider(subFolder, 'Metalness', 0, 1.0, 0.01, child.material, 'metalness');
+
+                            ui.addFolderSlider(subFolder, 'Roughness', 0, 1.0, 0.01, child.material, 'roughness');
+                            
+                            ui.addFolderItem(subFolder, 'Wireframe', (checked) => {
+                                child.material.wireframe = checked;
+                            });
+
+                            ui.addFolderItem(subFolder, 'Flat shading', (checked) => {
+                                child.material.flatShading = checked;
+                                child.material.needsUpdate = true;
+                            });
+
+                            ui.addFolderItem(subFolder, 'Transparent', (checked) => {
+                                child.material.transparent = checked;
+                            });
+
+                            ui.addFolderSlider(subFolder, 'Opacity', 0, 1.0, 0.01, child.material, 'opacity');
+
+                            ui.addFolderColorPicker(subFolder, 'Color', child.material, 'color');
+                        }
+                    }
+
+                    const planeFolder = ui.addFolderContent("P")
+
+                    ui.adjustButtonSizes()
+
+                    initSubCanvasPlanes(modelBox.clone(),"P"+"CanvasDiv",camera)
+
+
+                    ui.addFolderSlider(planeFolder, 'Plane X offset', 
+                        planeParams.planeX.min-0.01 ,planeParams.planeX.max+0.01, 0.01, 
+                            planeParams.planeX, 'offset', 
+                            (value) => {
+                                planes[ 0 ].constant = value ;
+                                resetSubModels()
+                                renderer.localClippingEnabled = true;
+                            }
+                    );
+
+                    ui.addFolderItem(planeFolder, 'Flip X offset', (checked) => {
+                                planes[ 0 ].negate();
+                                planeParams.planeX.offset = planes[ 0 ].constant;
+                    });
+                    
+                    ui.addFolderSlider(planeFolder, 'Plane Y offset', 
+                        planeParams.planeY.min-0.01 ,planeParams.planeY.max+0.01, 0.01, 
+                            planeParams.planeY, 'offset', 
+                            (value) => {
+                                planes[ 1 ].constant = value ;
+                                resetSubModels()
+                                renderer.localClippingEnabled = true;
+                            }
+                    );
+
+                    ui.addFolderItem(planeFolder, 'Flip Y offset', (checked) => {
+                                planes[ 1 ].negate();
+                                planeParams.planeX.offset = planes[ 1 ].constant;
+                    });
+                    
+                    ui.addFolderSlider(planeFolder, 'Plane Z offset', 
+                        planeParams.planeZ.min-0.01 ,planeParams.planeZ.max+0.01, 0.01, 
+                            planeParams.planeZ, 'offset', 
+                            (value) => {
+                                planes[ 2 ].constant = value ;
+                                resetSubModels()
+                                renderer.localClippingEnabled = true;
+                            }
+                    );
+
+                    ui.addFolderItem(planeFolder, 'Flip Z offset', (checked) => {
+                                planes[ 2 ].negate();
+                                planeParams.planeX.offset = planes[ 2 ].constant;
+                    });
+
+                    
+                }  
+            }         
+      
+
+
+            
+
+			function onWindowResize() {
+                /*
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+                */
+                
+                updateOrthographicCamera(camera,fullModelBoundingBox)
+				renderer.setSize( window.innerWidth, window.innerHeight );
+                updateLightPosition();
+
+                updateScreenShootButton();
+                updateHelper();
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+                if (planeObjects.length != 0){
+                    for ( let i = 0; i < planeObjects.length; i ++ ) {
+
+                        const plane = planes[ i ];
+                        const po = planeObjects[ i ];
+                        plane.coplanarPoint( po.position );
+                        po.lookAt(
+                            po.position.x - plane.normal.x,
+                            po.position.y - plane.normal.y,
+                            po.position.z - plane.normal.z,
+                        );
+                    }    
+
+                }
+
+                updateLightPosition()
+
+				renderer.render( scene, camera );
+    
+                camera.updateProjectionMatrix();
+                controls.update()
+                TWEEN.update()
+
+			}
+
+            function setUpModel(geometryArray,geometry){
+                    planeObjects = [];
+                    const planeGeom = new THREE.PlaneGeometry( 4,4 );
+                    
+                    for ( let i = 0; i < 3; i ++ ) {
+
+                        const poGroup = new THREE.Group();
+                        const plane = planes[ i ];
+
+                        geometryArray.forEach((geometry) => {
+                            const stencilGroup = createPlaneStencilGroup(geometry, plane, i + 1);
+                            object.add( stencilGroup );
+                        });
+                  
+                        let materialColor;
+                        if (i === 0) {
+                            materialColor = 0xff0000; // Red
+                        } else if (i === 1) {
+                            materialColor = 0x0000ff; // Blue
+                        } else {
+                            materialColor = 0x00ff00; // Green
+                        }
+                        const planeMat =
+                            new THREE.MeshStandardMaterial( {
+
+                                color: materialColor,
+                                metalness: 0.1,
+                                roughness: 0.75,
+                                clippingPlanes: planes.filter( p => p !== plane ),
+
+                                stencilWrite: true,
+                                stencilRef: 0,
+                                stencilFunc: THREE.NotEqualStencilFunc,
+                                stencilFail: THREE.ReplaceStencilOp,
+                                stencilZFail: THREE.ReplaceStencilOp,
+                                stencilZPass: THREE.ReplaceStencilOp,
+
+                            } );
+                        
+                        const po = new THREE.Mesh( planeGeom, planeMat );              
+                        po.onAfterRender = function ( renderer ) {
+
+                            renderer.clearStencil();
+
+                        };
+
+                        po.renderOrder = i + 1.1;
+                       
+                        poGroup.add( po );
+                        planeObjects.push( po );
+                        planeObjects.forEach((so, idx) => {
+
+                        so.material.onBeforeCompile = shader => {
+
+                            shader.vertexShader = `
+                                varying vec4 vPos;
+                                varying vec4 vCenter;
+                                ${shader.vertexShader}
+                            `.replace(
+                                `#include <begin_vertex>`,
+                                `#include <begin_vertex>
+                                vPos = modelMatrix * vec4(position, 1.);
+                                vCenter = modelMatrix * vec4(0);
+                                `
+                            );
+
+                            shader.fragmentShader = `
+                                #define ss(a, b, c) smoothstep(a, b, c)
+                                varying vec4 vPos;
+                                varying vec4 vCenter;
+                                ${shader.fragmentShader}
+                            `.replace(
+                                `vec4 diffuseColor = vec4( diffuse, opacity );`,
+                                `
+                                vec3 col = diffuse; //
+                                vec3 dir = normalize(vec3(1, -1, 0));
+                                float dist = fract(dot(vPos.xyz * 2., dir));
+                                float fw = length(fwidth(vPos.xy));
+                                float f = ss(0.15 - fw, 0.15, dist) - ss(0.85, 0.85 + fw, dist);
+                                col = mix(col + 0.125, col * 0.875, f);
+                                vec4 hatchColor = vec4(0.0, 0.0, 0.0, 1.0);
+                                float hatchSpacing = 0.008; // Hatch spacing
+                                float hatch = mod(vPos.x + vPos.y, hatchSpacing) < 0.001 ? 1.0 : 0.0; // Hatch pattern
+                                vec4 diffuseColor = mix(vec4(col, opacity), hatchColor, hatch);
+                                `
+                            );
+                        }
+                        });
+                        scene.add( poGroup );
+
+				}
+
+				const material = new THREE.MeshStandardMaterial( {
+					color: 0xFFC107,
+					metalness: 0.1,
+					roughness: 0.75,
+					clippingPlanes: planes,
+					clipShadows: true,
+					shadowSide: THREE.DoubleSide,
+
+				} );
+
+				const clippedColorFront = new THREE.Mesh( geometry, material );
+				clippedColorFront.castShadow = true;
+				clippedColorFront.renderOrder = 6;
+				object.add( clippedColorFront );
+                }
+            function createPlaneStencilGroup( geometry, plane, renderOrder ) {
+
+const group = new THREE.Group();
+const baseMat = new THREE.MeshBasicMaterial();
+baseMat.depthWrite = false;
+baseMat.depthTest = false;
+baseMat.colorWrite = false;
+baseMat.stencilWrite = true;
+baseMat.stencilFunc = THREE.AlwaysStencilFunc;
+
+// back faces
+const mat0 = baseMat.clone();
+mat0.side = THREE.BackSide;
+mat0.clippingPlanes = [ plane ];
+mat0.stencilFail = THREE.IncrementWrapStencilOp;
+mat0.stencilZFail = THREE.IncrementWrapStencilOp;
+mat0.stencilZPass = THREE.IncrementWrapStencilOp;
+
+const mesh0 = new THREE.Mesh( geometry, mat0 );
+mesh0.renderOrder = renderOrder;
+group.add( mesh0 );
+
+// front faces
+const mat1 = baseMat.clone();
+mat1.side = THREE.FrontSide;
+mat1.clippingPlanes = [ plane ];
+mat1.stencilFail = THREE.DecrementWrapStencilOp;
+mat1.stencilZFail = THREE.DecrementWrapStencilOp;
+mat1.stencilZPass = THREE.DecrementWrapStencilOp;
+
+const mesh1 = new THREE.Mesh( geometry, mat1 );
+mesh1.renderOrder = renderOrder;
+
+group.add( mesh1 );
+
+return group;
+
+}
+            
+            function moveModelCenterToBoxCenter(fullModel, modelBox) {
+                
+                let modelBoxCenter = new THREE.Vector3();
+                modelBox.getWorldPosition(modelBoxCenter);
+
+                let fullModelBoundingBox = new THREE.Box3().setFromObject(fullModel);
+                let fullModelCenter = new THREE.Vector3();
+                
+                fullModelBoundingBox.getCenter(fullModelCenter);
+
+                let offset = modelBoxCenter.clone().sub(fullModelCenter);
+                fullModel.position.add(offset);
+
+                return offset;
+            }
+            function scaleModelToFitBox(fullModel, boxSize) {
+         
+                let fullModelBoundingBox = new THREE.Box3().setFromObject(fullModel);
+                let fullModelSize = new THREE.Vector3();
+                fullModelBoundingBox.getSize(fullModelSize);
+
+                let scaleFactorX = boxSize.x / fullModelSize.x;
+                let scaleFactorY = boxSize.y / fullModelSize.y;
+                let scaleFactorZ = boxSize.z / fullModelSize.z;
+
+                let scaleFactor = Math.min(scaleFactorX, scaleFactorY, scaleFactorZ);
+
+                fullModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
+            }
+            
+            function resetPlanes(){
+                    planeParams.planeX.offset = planeParams.planeX.max + 0.01;
+                    planes[0].constant = planeParams.planeX.max + 0.01;
+                    planeParams.planeX.flipOffset = false;
+
+                    planeParams.planeY.offset = planeParams.planeY.max + 0.01;
+                    planes[1].constant = planeParams.planeY.max + 0.01;
+                    planeParams.planeY.flipOffset = false;
+
+                    planeParams.planeZ.offset = planeParams.planeZ.max + 0.01;
+                    planes[2].constant = planeParams.planeZ.max + 0.01;
+                    planeParams.planeZ.flipOffset = false;
+
+                    const ulElement = document.getElementById(`PUl`);
+
+                    const sliderXPlane = ulElement.children[0].children[1]
+                    const sliderYPlane = ulElement.children[2].children[1]
+                    const sliderZPlane = ulElement.children[4].children[1]
+
+                    sliderXPlane.value = planeParams.planeX.offset 
+                    sliderYPlane.value = planeParams.planeY.offset 
+                    sliderZPlane.value = planeParams.planeZ.offset 
+
+            }
+            function resetSubModels(){
+                    for (let i = 0 ; i< subModels.length;i++){
+
+                        subModels[i].position.x = subModelsPositions[i].x;
+                        subModels[i].position.y = subModelsPositions[i].y;
+                        subModels[i].position.z = subModelsPositions[i].z;
+
+                        subModels[i].rotation.x = subModelsRotations[i].x;
+                        subModels[i].rotation.y = subModelsRotations[i].y;
+                        subModels[i].rotation.z = subModelsRotations[i].z;
+                     
+                        const ulElement = document.getElementById(`M${i+1}Ul`);
+
+                        const sliderYElement = ulElement.children[0].children[1]
+
+                        sliderYElement.value = subModels[i].position.y
+
+                        const sliderRotationElement = ulElement.children[1].children[1]
+
+                        sliderRotationElement.value = 0;
+
+                    }
+            }
+            
+            function updateLightPosition() {
+                var cameraPosition = camera.position.clone();
+                var scaledPosition = cameraPosition.setLength(cameraPosition.length() * 2); 
+                dirLight.position.copy(scaledPosition); 
+            }
+
+
+            function updatePlaneParams(fullModelBoundingBox) {
+                    return {
+                        planeX: {
+                            offset: fullModelBoundingBox.max.x + 0.01,
+                            flipOffset: false,
+                            min: fullModelBoundingBox.min.x - 0.01,
+                            max: fullModelBoundingBox.max.x + 0.01,
+                        },
+                        planeY: {
+                            offset: fullModelBoundingBox.max.y + 0.01,
+                            flipOffset: false,
+                            min: fullModelBoundingBox.min.y - 0.01,
+                            max: fullModelBoundingBox.max.y + 0.01,
+                        },
+                        planeZ: {
+                            offset: fullModelBoundingBox.max.z + 0.01,
+                            flipOffset: false,
+                            min: fullModelBoundingBox.min.z - 0.01,
+                            max: fullModelBoundingBox.max.z + 0.01,
+                        }
+                    };
+                }
+            function updatePlanesConstants(planes, fullModelBoundingBox) {
+                planes[0].constant = fullModelBoundingBox.max.x + 0.01;
+                planes[1].constant = fullModelBoundingBox.max.y + 0.01;
+                planes[2].constant = fullModelBoundingBox.max.z + 0.01;
+            }
+
+            function onClick(event) {
+            const v = new THREE.Vector2();
+            const raycaster = new THREE.Raycaster();
+
+                v.set(
+                    (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
+                    -(event.clientY / renderer.domElement.clientHeight) * 2 + 1
+                );
+        
+            raycaster.setFromCamera(v, camera);
+        
+            const intersects = raycaster.intersectObjects(subModels, true);
+        
+                if (intersects.length > 0) {
+                    const intersectedObjectName = intersects[0].object.name;
+                    for (let i = 0; i < subModels.length; i++) {
+                        let parent = intersects[0].object.parent;
+                        while (parent !== null) {
+                            if (parent.name === subModels[i].name) {
+                                const boundingBox = new THREE.Box3().setFromObject(subModels[i]);
+                                const boundingBoxCenter = new THREE.Vector3();
+                                boundingBox.getCenter(boundingBoxCenter);
+
+                                if (controls.target.equals(boundingBoxCenter)) {
+                                    const targetPosition = new THREE.Vector3(0,0,0.6);
+                                    const targetLookAt = new THREE.Vector3(0,0,0);
+                                    tweenTo(camera,controls,targetPosition,targetLookAt)
+                                    
+                                    normalZoom(camera,controls,700)
+                                    updateOrthographicCamera(camera, boundingBox);
+
+                                } else {
+                                    const boundingBoxSize = new THREE.Vector3();
+                                    boundingBox.getSize(boundingBoxSize);
+                                    const diagonal = boundingBoxSize.length();
+
+                                    const angle = Math.PI / 4; 
+                                    const distance = diagonal * 0.7;
+                                    const targetPosition = new THREE.Vector3(
+                                        boundingBoxCenter.x + distance * Math.cos(angle),
+                                        boundingBoxCenter.y + distance * Math.sin(angle / 3),
+                                        boundingBoxCenter.z + distance * Math.sin(angle)
+                                    );
+
+                                    tweenTo(camera,controls,targetPosition,boundingBoxCenter)
+                                }
+                                break; 
+                            }
+                            parent = parent.parent;
+                        }
+                    }
+                }
+            }
+
+            function tweenTo(camera, controls, targetPosition, targetLookAt, duration = 700) {
+                const currentCameraPosition = camera.position.clone();
+                const currentTarget = controls.target.clone();
+
+                new TWEEN.Tween(currentCameraPosition)
+                    .to({
+                        x: targetPosition.x,
+                        y: targetPosition.y,
+                        z: targetPosition.z
+                    }, duration) 
+                    .easing(TWEEN.Easing.Sinusoidal.InOut)
+                    .onUpdate(() => {
+                        camera.position.set(currentCameraPosition.x, currentCameraPosition.y, currentCameraPosition.z);
+                        updateOrthographicCamera(camera,fullModelBoundingBox)
+                    })
+                    .start();
+
+                new TWEEN.Tween(currentTarget)
+                    .to({
+                        x: targetLookAt.x,
+                        y: targetLookAt.y,
+                        z: targetLookAt.z
+                    }, duration) 
+                    .easing(TWEEN.Easing.Sinusoidal.InOut)
+                    .onUpdate(() => {
+                        controls.target.set(currentTarget.x, currentTarget.y, currentTarget.z);
+                        controls.update();
+                    })
+                    .start();
+            }
+            function normalZoom(camera, controls, duration = 800) {
+                const zoom = {
+                    value: camera.zoom,
+                    x: controls.target.x,
+                    y: controls.target.y,
+                    z: controls.target.z
+                };
+
+                const zoomEnd = {
+                    value: 1,
+                    x: 0,
+                    y: 0,
+                    z: 0
+                };
+
+                const tween = new TWEEN.Tween(zoom)
+                    .to(zoomEnd, duration)
+                    .onUpdate(function() {
+                        camera.zoom = zoom.value;
+                        controls.target.set(zoom.x, zoom.y, zoom.z);
+                        camera.updateProjectionMatrix();
+                        controls.update();
+                    })
+                    .start();
+            }
+            function rotateCameraToEuler(camera, targetEuler, radius, duration = 1000) {
+                const currentQuaternion = camera.quaternion.clone();
+                const targetQuaternion = new THREE.Quaternion().setFromEuler(targetEuler);
+
+
+
+                new TWEEN.Tween({ t: 0 })
+                    .to({ t: 1 }, duration)
+                    .easing(TWEEN.Easing.Quadratic.InOut)
+                    .onUpdate(function (obj) {
+                        camera.quaternion.slerpQuaternions(currentQuaternion, targetQuaternion, obj.t);
+
+                        // Calculate the new position based on the updated quaternion
+                        const direction = new THREE.Vector3(0, 0, radius).applyQuaternion(camera.quaternion);
+                        camera.position.set(direction.x, direction.y, direction.z);
+
+                        camera.lookAt(0, 0, 0);
+
+                        controls.update();
+                        camera.updateProjectionMatrix();
+                    })
+                    .start();
+            }
+
+            function dataURLtoBlob(dataurl) {
+                const arr = dataurl.split(',');
+                const mime = arr[0].match(/:(.*?);/)[1];
+                const bstr = atob(arr[1]);
+                let n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                while (n--) {
+                    u8arr[n] = bstr.charCodeAt(n);
+                }
+                return new Blob([u8arr], { type: mime });
+            }
+            function takeScreenshot() {
+                renderer.render(scene, camera);
+                const strDownloadMime = "image/octet-stream";
+                const imgData = renderer.domElement.toDataURL("image/png");
+
+                const blob = dataURLtoBlob(imgData);
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.id = "link";
+                link.innerHTML = "TEST";
+                link.href = url
+                link.download = 'screenshot.png';
+                link.target = '_blank'; 
+                document.body.appendChild(link);
+
+                if (link) {
+                            const url = link.href;
+                            window.open(url, '_blank');
+                }
+                
+                document.body.removeChild(link)
+            }
+
+            function initHelper() {
+                var helperWidth = 100,
+                    helperHeight = 100;
+                var containerHelper = document.getElementById('helper');
+                containerHelper.style.width = helperWidth + 'px';
+                containerHelper.style.height = helperHeight + 'px';
+
+                var rendererHelper = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                rendererHelper.setClearColor(0x000000, 0);
+                rendererHelper.setSize(helperWidth, helperHeight);
+                containerHelper.appendChild(rendererHelper.domElement);
+
+                const labelRenderer = new CSS2DRenderer()
+
+                labelRenderer.setSize(helperWidth, helperHeight)
+                            labelRenderer.domElement.style.position = 'absolute'
+                            labelRenderer.domElement.style.top = '0px'
+                            labelRenderer.domElement.style.pointerEvents = 'none'
+                            containerHelper.appendChild(labelRenderer.domElement)
+
+                var sceneHelper = new THREE.Scene();
+
+                var cameraHelper = new THREE.OrthographicCamera(helperWidth / -2, helperWidth / 2, helperHeight / 2, helperHeight / -2, 0.01, 100 );
+                cameraHelper.up = new THREE.Vector3(0, 1, 0);
+
+                var arrowPos = new THREE.Vector3(0, 0, 0);
+                var arrowLength = 40;
+
+                // Create arrow helpers
+                var xArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), arrowPos, arrowLength, 0x7F2020, 10, 5);
+                var yArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), arrowPos, arrowLength, 0x207F20, 10, 5);
+                var zArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), arrowPos, arrowLength, 0x20207F, 10, 5);
+
+                //   arrow helpers to the scene
+                sceneHelper.add(xArrow);
+                sceneHelper.add(yArrow);
+                sceneHelper.add(zArrow);
+
+                // Create label texts
+                var xLabelDiv = createLabelDiv('X');
+                var yLabelDiv = createLabelDiv('Y');
+                var zLabelDiv = createLabelDiv('Z');
+
+                // Create CSS2DObjects for label texts
+                var xLabel = new CSS2DObject(xLabelDiv);
+                var yLabel = new CSS2DObject(yLabelDiv);
+                var zLabel = new CSS2DObject(zLabelDiv);
+
+                // Position label texts at the tips of arrows
+                xLabel.position.set(45,0, 0);
+                yLabel.position.set(0, 45, 0);
+                zLabel.position.set(0, 0, 45);
+
+                // Add label texts to the scene
+                sceneHelper.add(xLabel);
+                sceneHelper.add(yLabel);
+                sceneHelper.add(zLabel);
+
+                function animateHelper() {
+                    requestAnimationFrame(animateHelper);
+
+                    cameraHelper.position.copy(camera.position);
+                    cameraHelper.position.sub(controls.target);
+                    cameraHelper.position.setLength(55);
+                    cameraHelper.lookAt(sceneHelper.position);
+
+                    rendererHelper.render(sceneHelper, cameraHelper);
+
+                    labelRenderer.render(sceneHelper, cameraHelper)
+                }
+                animateHelper();
+            }
+
+            function createLabelDiv(text) {
+                var div = document.createElement('div');
+                div.className = 'arrowLabel';
+                div.innerHTML = text;
+
+                div.style.fontSize = '12px';
+
+                switch (text) {
+                    case 'X':
+                        div.style.color = '#7F2020'; 
+                        break;
+                    case 'Y':
+                        div.style.color = '#207F20';
+                        break;
+                    case 'Z':
+                        div.style.color = '#20207F'; 
+                        break;
+                    default:
+                        div.style.color = '#000000'; 
+                        break;
+                }
+
+                return div;
+            }
+  
+            function updateOrthographicCamera(camera, boundingBox) {
+                        if (camera instanceof THREE.OrthographicCamera) {
+                            let maxValue = Math.max(
+                                boundingBox.max.x - boundingBox.min.x,
+                                boundingBox.max.y - boundingBox.min.y,
+                                boundingBox.max.z - boundingBox.min.z
+                            ) 
+
+                            if (window.innerHeight>=window.innerWidth){
+                                maxValue =  window.innerHeight / window.innerWidth * maxValue * 1.35
+                            } else {
+                                maxValue = maxValue * 1.35
+                            }
+
+                            const aspect = window.innerWidth / window.innerHeight;
+                            camera.left = -maxValue * aspect / 2;
+                            camera.right = maxValue * aspect / 2;
+                            camera.top = maxValue / 2;
+                            camera.bottom = -maxValue / 2;
+                            camera.updateProjectionMatrix();
+                            controls.update();
+                        } else {
+                            console.error("The provided camera is not an instance of THREE.OrthographicCamera");
+                        }
+                    }
+               
+            function handleMainMenuButtons(e) {
+                const button = e.target.closest('button');
+                const buttonId = button.id
+
+                function isCameraPositionPredominantlyAxis(axis, camera, threshold = 1.3) {
+                    const x = Math.abs(camera.position.x);
+                    const y = Math.abs(camera.position.y);
+                    const z = Math.abs(camera.position.z);
+
+                    switch (axis.toLowerCase()) {
+                        case 'x':
+                            return x > threshold * y && x > threshold * z;
+                        case 'y':
+                            return y > threshold * x && y > threshold * z;
+                        case 'z':
+                            return z > threshold * x && z > threshold * y;
+                        default:
+                            console.error('Invalid axis. Please use "x", "y", or "z".');
+                            return false;
+                    }
+                }
+
+                resetPlanes();
+                resetSubModels();
+
+                normalZoom(camera, controls, 1300);
+                
+                let targetEuler;
+                let radius;
+                
+                switch(buttonId) {
+
+                    case 'gotoIso.':
+                        targetEuler = new THREE.Euler(-Math.PI / 4, Math.PI / 4, 0);
+                        radius = 1;
+   
+                        rotateCameraToEuler(camera, targetEuler, radius, 1300);
+                        break;
+                    case 'gotoTop':
+                        targetEuler = new THREE.Euler(-Math.PI / 2 *0.999, 0, 0 );
+                        radius = 1;
+   
+                        rotateCameraToEuler(camera, targetEuler, radius, 1300);
+                        break;
+                    case 'gotoBottom':                  
+                        targetEuler = new THREE.Euler(Math.PI / 2 * 0.999,0, 0);
+                        radius = 1;
+   
+                        rotateCameraToEuler(camera, targetEuler, radius, 1300);
+                        break;
+                    case 'gotoFront':
+                        targetEuler = new THREE.Euler(0, 0, 0);
+                        radius = 1;
+
+                        rotateCameraToEuler(camera, targetEuler, radius, 1300);
+                        break;
+                    case 'gotoBack':
+                        targetEuler = new THREE.Euler(0, Math.PI, 0);
+                        radius = 1;
+
+                        rotateCameraToEuler(camera, targetEuler, radius, 1300);
+                        break;
+                    case 'gotoRight':     
+                        targetEuler = new THREE.Euler(0, Math.PI / 2, 0);
+                        radius = 1;
+
+                        rotateCameraToEuler(camera, targetEuler, radius, 1300);
+                        break;
+                    case 'gotoLeft':
+                        targetEuler = new THREE.Euler(0, -Math.PI / 2, 0);
+                        radius = 1;
+
+                        rotateCameraToEuler(camera, targetEuler, radius, 1300);
+                        break;
+                    case 'gotoReset':
+                        targetEuler = new THREE.Euler(0, 0, 0);
+                        radius = 1;
+
+                        rotateCameraToEuler(camera, targetEuler, radius, 1300);
+                        break;
+                    default:
+                        console.log('Unknown button clicked');
+                }
+            }
+            function updateScreenShootButton(){
+                const screenshotButton = document.getElementById('screenshotButton');
+
+                if (screenshotButton){
+                    if (window.innerHeight >= 500  && window.innerWidth >= 400 ) {
+                        screenshotButton.style.padding = "10px 20px"
+                        screenshotButton.style.fontSize = "12px"
+                        screenshotButton.style.borderRadius = "5px"
+                    }
+                    else if ((window.innerHeight >= 400 && window.innerHeight <= 500) && window.innerWidth < 400 ) {
+                        screenshotButton.style.padding = "7px 13px"
+                        screenshotButton.style.fontSize = "9px"
+                        screenshotButton.style.borderRadius = "3px"
+                    } else if (window.innerHeight < 400) {
+                        screenshotButton.style.padding = "6px 10px"
+                        screenshotButton.style.fontSize = "8px"
+                        screenshotButton.style.borderRadius = "2px"
+                    }
+                }
+            }
+
+            function updateHelper (){
+                const helper = document.getElementById('helper');
+                    if (helper){
+                        if (window.innerWidth > 319 && window.innerHeight > 300) {
+                            helper.style.display = "block"
+        
+                        } else {
+                            helper.style.display = "none";
+                        }
+                    } 
+            }
+
+            function initSubCanvas(model, divId,cameraOriginal) {
+    // Get the target div by ID
+    const div = document.getElementById(divId);
+
+    // Check if the div exists
+    if (!div) {
+        console.error(`Div with ID ${divId} not found`);
+        return;
+    }
+
+    // Create a new canvas element
+    const canvas = document.createElement('canvas');
+    canvas.width = '100%';
+    canvas.height = '100%';
+    div.appendChild(canvas);
+
+    // Initialize Three.js and render a 3D model on the canvas
+    const renderer = new THREE.WebGLRenderer({ canvas , antialias: true});
+    renderer.setSize(1, 1);
+    renderer.setClearColor(0x263238);
+
+    const scene = new THREE.Scene();
+    const aspectRatio = 50/ 50;
+    const camera = new THREE.OrthographicCamera(-0.7 * aspectRatio, 0.7 * aspectRatio, 0.7, -0.7, 0.01, 1000);
+    camera.position.set(3, 1 , 3);
+    camera.lookAt(0, 0, 0);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+    directionalLight.position.set(1.5, 1.5, 1.5);
+    scene.add(directionalLight);
+
+    // Add the pre-loaded model to the scene
+    if (model) {
+        // Compute the bounding box of the model
+        const boundingBox = new THREE.Box3().setFromObject(model);
+        const size = boundingBox.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+
+        // Calculate scaling factor to fit model into a 1x1x1 box
+        const scale = 1 / maxDim;
+        model.scale.set(scale, scale, scale);
+
+        // Center the model at the origin
+        boundingBox.setFromObject(model); // Update the bounding box after scaling
+        const center = boundingBox.getCenter(new THREE.Vector3());
+        model.position.sub(center);
+
+        scene.add(model);
+    }
+
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x008CBA,
+        transparent: true,
+        opacity: 0.1,
+
+    });
+    const cube = new THREE.Mesh(geometry, material);
+    scene.add(cube);    
+
+    let breaker = true;
+
+    const animate = function () {
+        requestAnimationFrame(animate);
+        if(breaker){
+            if (div.clientWidth !== 0){
+                renderer.setSize(div.clientWidth, div.clientHeight);
+                breaker = false;
+            }            
+        }      
+
+
+        controls.update();
+        renderer.render(scene, camera);
+    };
+
+    animate();
+
+    window.addEventListener('resize', () => {
+        canvas.width = div.clientWidth;
+        canvas.height = div.clientHeight;
+        renderer.setSize(div.clientWidth, div.clientHeight);
+        camera.aspect = div.clientWidth / div.clientHeight;
+        camera.updateProjectionMatrix();
+    });
+}
+
+function initSubCanvasPlanes(model, divId,cameraOriginal) {
+    // Get the target div by ID
+    const div = document.getElementById(divId);
+
+    // Check if the div exists
+    if (!div) {
+        console.error(`Div with ID ${divId} not found`);
+        return;
+    }
+
+    // Create a new canvas element
+    const canvas = document.createElement('canvas');
+    canvas.width = '100%';
+    canvas.height = '100%';
+    div.appendChild(canvas);
+
+    // Initialize Three.js and render a 3D model on the canvas
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true});
+    renderer.setSize(1, 1);
+    renderer.setClearColor(0x263238);
+
+    const scene = new THREE.Scene();
+    const aspectRatio = 50/ 50;
+    const camera = new THREE.OrthographicCamera(-0.7 * aspectRatio, 0.7 * aspectRatio, 0.7, -0.7, 0.01, 1000);
+    camera.position.set(3, 1 , 3);
+    camera.lookAt(0, 0, 0);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    directionalLight.position.set(1.5, 1.5, 1.5);
+    scene.add(directionalLight);
+
+    // Add the pre-loaded model to the scene
+    if (model) {
+        // Compute the bounding box of the model
+        const boundingBox = new THREE.Box3().setFromObject(model);
+        const size = boundingBox.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+
+        // Calculate scaling factor to fit model into a 1x1x1 box
+        const scale = 1 / maxDim;
+        model.scale.set(scale, scale, scale);
+
+        // Center the model at the origin
+        boundingBox.setFromObject(model); // Update the bounding box after scaling
+        const center = boundingBox.getCenter(new THREE.Vector3());
+        model.position.sub(center);
+
+        scene.add(model);
+    }
+
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x008CBA,
+        transparent: true,
+        opacity: 0.1,
+
+    });
+    const cube = new THREE.Mesh(geometry, material);
+    scene.add(cube);    
+
+    let breaker = true;
+
+    const animate = function () {
+        requestAnimationFrame(animate);
+        if(breaker){
+            if (div.clientWidth !== 0){
+                renderer.setSize(div.clientWidth, div.clientHeight);
+                breaker = false;
+            }            
+        }      
+
+
+        controls.update();
+        renderer.render(scene, camera);
+    };
+
+    animate();
+
+    window.addEventListener('resize', () => {
+        canvas.width = div.clientWidth;
+        canvas.height = div.clientHeight;
+        renderer.setSize(div.clientWidth, div.clientHeight);
+        camera.aspect = div.clientWidth / div.clientHeight;
+        camera.updateProjectionMatrix();
+    });
+}
+
+
+            
+            document.getElementById('screenshotButton').addEventListener('click', takeScreenshot);
+            
+
+            renderer.domElement.addEventListener('click', onClick, false);
+        
+        </script>
+        <div id="loadingScreen">
+            <div id="spinner"></div>
+            <div id="progressBar">
+                <div id="progressBarFill"></div>
+            </div>
+        </div>
+        <div id="mainContent">
+            <div id="helper"></div>
+            <button id="screenshotButton">Take Screenshot</button>
+        </div>
+	</body>
+</html>
