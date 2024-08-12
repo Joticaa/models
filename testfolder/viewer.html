@@ -166,6 +166,12 @@
 
  console.log(event.origin)
 
+
+		    // Check if the event origin matches the expected origin
+if (event.origin !== trustedOrigin) {
+    console.warn(`Blocked message from untrusted origin: ${event.origin}`);
+    return; // Ignore the message if the origin is not trusted
+}
     // Process the message if it passes the security check
     const message = event.data;
 
